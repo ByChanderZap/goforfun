@@ -1,0 +1,13 @@
+[build]
+cmd = "go build -o ./tmp/main ./cmd/web"
+bin = "./tmp/main"
+args_bin = ["-addr=:4000", "-dsn=web:password@tcp\\(127.0.0.1:3306\\)/snippetbox?parseTime=true"]
+include_ext = ["go"]
+exclude_dir = ["tmp", "vendor"]
+
+[log]
+  time = true
+
+[watch]
+  include_dir = ["."]
+  exclude_dir = ["tmp", "vendor"]
