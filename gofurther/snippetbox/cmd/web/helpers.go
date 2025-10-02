@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"github.com/go-playground/form/v4"
 )
 
 func (app *application) serverError(w http.ResponseWriter, r *http.Request, err error) {
@@ -49,4 +52,25 @@ func (app *application) newTemplateData(r *http.Request) templateData {
 	return templateData{
 		CurrentYear: time.Now().Year(),
 	}
+}
+
+func (app *application) decodePostForm(r *http.Request, dst any) error {
+	err := r.ParseForm()
+	if err != nil {
+		return err
+	}
+
+	err = app.formDecoder.Decode(&dst, r.PostForm)
+	if err != nil {
+		// still unsure if is the right thing to panic in here or just return the error
+		// btw panic within a request will not nuke the whole program, it just nukes the go routine where that specific request was running
+		// because yes, every request spawn his own go rountine, cool uh?
+		var invalidDecodError *form.InvalidDecoderError
+		if errors.As(err, &invalidDecodError) {
+			panic(err)
+		}
+
+		return err
+	}
+	return nil
 }
