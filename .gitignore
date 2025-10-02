@@ -1,2 +1,3 @@
 *.env
 */tmp/*
+gofurther/snippetbox/tmp
