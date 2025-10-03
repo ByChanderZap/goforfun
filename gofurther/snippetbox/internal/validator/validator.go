@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -41,4 +42,14 @@ func MaxChars(value string, n int) bool {
 
 func PermittedValues[T comparable](value T, allowedValues ...T) bool {
 	return slices.Contains(allowedValues, value)
+}
+
+func MinChars(value string, n int) bool {
+	return utf8.RuneCountInString(value) >= n
+}
+
+var EmailRX = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
+func ValidEmail(email string, rx *regexp.Regexp) bool {
+	return rx.MatchString(email)
 }
