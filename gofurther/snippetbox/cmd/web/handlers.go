@@ -27,6 +27,13 @@ type userSignupForm struct {
 	validator.Validator `form:"-"`
 }
 
+type userSignInForm struct {
+	Email    string `form:"email"`
+	Password string `form:"password"`
+
+	validator.Validator `form:"-"`
+}
+
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
 	snippets, err := app.snippets.Latest()
 	if err != nil {
@@ -146,6 +153,9 @@ func (app *application) userSignupPost(w http.ResponseWriter, r *http.Request) {
 		Password: string(hashedPassword),
 	})
 	if err != nil {
+		// i dont really like this, and one work around could be creating like a "UserModel.EmailInUse" function
+		// but that approach might cause other issues, like a race condition where two users try to sign up with the same email at the same time
+		// both users would pass that validation but then one would be created and the other one would violate the unique constraint
 		if errors.Is(err, models.ErrDuplicatedEmail) {
 			form.AddFieldError("email", "email already in use")
 			data := app.newTemplateData(r)
@@ -162,13 +172,60 @@ func (app *application) userSignupPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) userLogin(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello from the user Login")
+	data := app.newTemplateData(r)
+	data.Form = userSignInForm{}
+	app.render(w, r, http.StatusOK, "login.tmpl", data)
 }
 
 func (app *application) userLoginPost(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello from the user login POST")
+	var form userSignInForm
+	err := app.decodePostForm(r, &form)
+	if err != nil {
+		app.clientError(w, r, http.StatusBadRequest)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Email), "email", "email cannot be empty")
+	form.CheckField(validator.NotBlank(form.Password), "password", "password cannot be empty")
+	form.CheckField(validator.ValidEmail(form.Email, validator.EmailRX), "email", "this is an invalid email address")
+
+	if !form.Valid() {
+		data := app.newTemplateData(r)
+		data.Form = form
+		app.render(w, r, http.StatusUnprocessableEntity, "login.tmpl", data)
+		return
+	}
+
+	uId, err := app.users.Authenticate(models.AuthenticateUserParams{Email: form.Email, Password: form.Password})
+	if err != nil {
+		if errors.Is(err, models.ErrInvalidCredentials) {
+			form.AddNonFieldError("Invalid email or password")
+
+			data := app.newTemplateData(r)
+			data.Form = form
+			app.render(w, r, http.StatusBadRequest, "login.tmpl", data)
+			return
+		}
+		app.serverError(w, r, err)
+		return
+	}
+
+	if err = app.sessionManager.RenewToken(r.Context()); err != nil {
+		app.serverError(w, r, err)
+		return
+	}
+
+	app.sessionManager.Put(r.Context(), "authenticatedUserId", uId)
+
+	http.Redirect(w, r, "/snippet/create", http.StatusSeeOther)
 }
 
 func (app *application) userLogoutPost(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello from the user logout post")
+	app.sessionManager.Remove(r.Context(), "authenticatedUserId")
+	if err := app.sessionManager.RenewToken(r.Context()); err != nil {
+		app.serverError(w, r, err)
+	}
+
+	app.sessionManager.Put(r.Context(), "flash", "logout successfully")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
@@ -58,8 +59,36 @@ type AuthenticateUserParams struct {
 	Password string
 }
 
+const stmtAuthenticateQuery = `
+	SELECT id, hashed_password
+	FROM users
+	WHERE email = ?
+	`
+
 func (m *UserModel) Authenticate(params AuthenticateUserParams) (int, error) {
-	return 0, nil
+	var id int
+	var hashedPassword []byte
+
+	err := m.DB.QueryRow(stmtAuthenticateQuery, params.Email).Scan(
+		&id,
+		&hashedPassword,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrInvalidCredentials
+		}
+		return 0, err
+	}
+
+	err = bcrypt.CompareHashAndPassword(hashedPassword, []byte(params.Password))
+	if err != nil {
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			return 0, ErrInvalidCredentials
+		}
+		return 0, err
+	}
+
+	return id, nil
 }
 
 type ExistsParams struct {
