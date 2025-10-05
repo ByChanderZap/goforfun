@@ -92,9 +92,16 @@ func (m *UserModel) Authenticate(params AuthenticateUserParams) (int, error) {
 }
 
 type ExistsParams struct {
-	ID string
+	ID int
 }
 
 func (m *UserModel) Exists(params ExistsParams) (bool, error) {
-	return true, nil
+	stmt := `SELECT true from users WHERE id = ?`
+	var exists bool
+
+	err := m.DB.QueryRow(stmt, params.ID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/ByChanderZap/snippetbox/internal/models"
+	"github.com/justinas/nosurf"
 )
 
 func commonHeader(next http.Handler) http.Handler {
@@ -72,3 +76,52 @@ func (app *application) requireAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+func (app *application) preventCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		csrfHandler := nosurf.New(next)
+		csrfHandler.SetBaseCookie(http.Cookie{
+			HttpOnly: true,
+			Path:     "/",
+			Secure:   true,
+		})
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (app *application) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := app.sessionManager.GetInt(r.Context(), "authenticatedUserId")
+		if id == 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		exists, err := app.users.Exists(models.ExistsParams{
+			ID: id,
+		})
+		if err != nil {
+			app.serverError(w, r, err)
+			return
+		}
+
+		if exists {
+			ctx := context.WithValue(r.Context(), isAuthenticatedContextKey, true)
+			r = r.WithContext(ctx)
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// this can be done to allow some origins for post requests
+// func (app *application) preventCSRF(next http.Handler) http.Handler {
+// 	cop := http.NewCrossOriginProtection()
+// 	cop.AddTrustedOrigin("https://foo.example.com")
+//
+// 	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		w.WriteHeader(http.StatusBadRequest)
+// 		w.Write([]byte("CSRF check failed"))
+// 	}))
+// 	return cop.Handler(next)
+// }
